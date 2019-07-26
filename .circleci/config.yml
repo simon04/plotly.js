@@ -156,8 +156,11 @@ jobs:
       - run:
           name: Build dist/
           command: npm run build
+      - run:
+          name: Compress dist/
+          command: tar -cvf dist.tar dist
       - store_artifacts:
-          path: dist
+          path: dist.tar
           destination: dist
       - run:
           name: Pack tarball
