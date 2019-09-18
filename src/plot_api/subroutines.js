@@ -57,14 +57,6 @@ function lsInner(gd) {
     var axList = Axes.list(gd, '', true);
     var i, subplot, plotinfo, ax, xa, ya;
 
-    fullLayout._paperdiv.style({
-        width: (gd._context.responsive && fullLayout.autosize && !gd._context._hasZeroWidth && !gd.layout.width) ? '100%' : fullLayout.width + 'px',
-        height: (gd._context.responsive && fullLayout.autosize && !gd._context._hasZeroHeight && !gd.layout.height) ? '100%' : fullLayout.height + 'px'
-    })
-    .selectAll('.main-svg')
-    .call(Drawing.setSize, fullLayout.width, fullLayout.height);
-    gd._context.setBackground(gd, fullLayout.paper_bgcolor);
-
     exports.drawMainTitle(gd);
     ModeBar.manage(gd);
 

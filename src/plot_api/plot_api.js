@@ -202,6 +202,18 @@ function plot(gd, data, layout, config) {
     var drawFrameworkCalls = 0;
     function drawFramework() {
         var basePlotModules = fullLayout._basePlotModules;
+        var responsiveAutosize = gd._context.responsive && fullLayout.autosize;
+
+        fullLayout._paperdiv.style({
+            width: (responsiveAutosize && !gd._context._hasZeroWidth && !gd.layout.width) ?
+                '100%' : fullLayout.width + 'px',
+            height: (responsiveAutosize && !gd._context._hasZeroHeight && !gd.layout.height) ?
+                '100%' : fullLayout.height + 'px'
+        })
+        .selectAll('.main-svg')
+        .call(Drawing.setSize, fullLayout.width, fullLayout.height);
+
+        gd._context.setBackground(gd, fullLayout.paper_bgcolor);
 
         for(var i = 0; i < basePlotModules.length; i++) {
             if(basePlotModules[i].drawFramework) {
