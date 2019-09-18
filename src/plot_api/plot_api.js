@@ -89,12 +89,6 @@ function plot(gd, data, layout, config) {
             'but this container doesn\'t yet have a plot.', gd);
     }
 
-    function addFrames() {
-        if(frames) {
-            return exports.addFrames(gd, frames);
-        }
-    }
-
     // transfer configuration options to gd until we move over to
     // a more OO like model
     setPlotContext(gd, config);
@@ -182,8 +176,9 @@ function plot(gd, data, layout, config) {
     if(gd._context.responsive) {
         if(!gd._responsiveChartHandler) {
             // Keep a reference to the resize handler to purge it down the road
-            gd._responsiveChartHandler = function() { if(!Lib.isHidden(gd)) Plots.resize(gd); };
-
+            gd._responsiveChartHandler = function() {
+                if(!Lib.isHidden(gd)) Plots.resize(gd);
+            };
             // Listen to window resize
             window.addEventListener('resize', gd._responsiveChartHandler);
         }
@@ -196,6 +191,10 @@ function plot(gd, data, layout, config) {
      */
 
     var oldMargins = Lib.extendFlat({}, fullLayout._size);
+
+    function addFrames() {
+        return exports.addFrames(gd, frames);
+    }
 
     // draw framework first so that margin-pushing
     // components can position themselves correctly
@@ -222,19 +221,11 @@ function plot(gd, data, layout, config) {
         }
 
         if(!fullLayout._glcanvas && fullLayout._has('gl')) {
-            fullLayout._glcanvas = fullLayout._glcontainer.selectAll('.gl-canvas').data([{
-                key: 'contextLayer',
-                context: true,
-                pick: false
-            }, {
-                key: 'focusLayer',
-                context: false,
-                pick: false
-            }, {
-                key: 'pickLayer',
-                context: false,
-                pick: true
-            }], function(d) { return d.key; });
+            fullLayout._glcanvas = fullLayout._glcontainer.selectAll('.gl-canvas').data([
+                { key: 'contextLayer', context: true, pick: false },
+                { key: 'focusLayer', context: false, pick: false },
+                { key: 'pickLayer', context: false, pick: true }
+            ], function(d) { return d.key; });
 
             fullLayout._glcanvas.enter().append('canvas')
                 .attr('class', function(d) {
@@ -351,13 +342,16 @@ function plot(gd, data, layout, config) {
         return Axes.draw(gd, graphWasEmpty ? '' : 'redraw');
     }
 
-    var seq = [
-        Plots.previousPromises,
+    var seq = [Plots.previousPromises];
+
+    if(frames) seq.push(addFrames);
+
+    seq.push(
         addFrames,
         drawFramework,
         marginPushers,
         marginPushersAgain
-    ];
+    );
 
     if(hasCartesian) seq.push(positionAndAutorange);
 
