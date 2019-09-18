@@ -57,8 +57,6 @@ function lsInner(gd) {
     var axList = Axes.list(gd, '', true);
     var i, subplot, plotinfo, ax, xa, ya;
 
-    exports.drawMainTitle(gd);
-
     // _has('cartesian') means SVG specifically, not GL2D - but GL2D
     // can still get here because it makes some of the SVG structure
     // for shared features like selections.

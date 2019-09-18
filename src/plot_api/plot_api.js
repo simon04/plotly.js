@@ -363,6 +363,7 @@ function plot(gd, data, layout, config) {
     seq.push(
         subroutines.drawData,
         subroutines.finalDraw,
+        subroutines.drawMainTitle,
         initInteractions,
         Plots.addLinks,
         Plots.rehover,
