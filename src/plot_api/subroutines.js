@@ -58,7 +58,6 @@ function lsInner(gd) {
     var i, subplot, plotinfo, ax, xa, ya;
 
     exports.drawMainTitle(gd);
-    ModeBar.manage(gd);
 
     // _has('cartesian') means SVG specifically, not GL2D - but GL2D
     // can still get here because it makes some of the SVG structure

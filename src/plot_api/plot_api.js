@@ -24,6 +24,7 @@ var Plots = require('../plots/plots');
 var Polar = require('../plots/polar/legacy');
 
 var Axes = require('../plots/cartesian/axes');
+var ModeBar = require('../components/modebar');
 var Drawing = require('../components/drawing');
 var Color = require('../components/color');
 var initInteractions = require('../plots/cartesian/graph_interact').initInteractions;
@@ -277,6 +278,7 @@ function plot(gd, data, layout, config) {
               .style('width', null)
               .style('height', fullLayout.height + 'px');
         }
+        ModeBar.manage(gd);
 
         return Plots.previousPromises(gd);
     }
