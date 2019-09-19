@@ -235,7 +235,7 @@ function findDimensions(gd, ax) {
 
     fakeButtons.remove();
 
-    dims.width = Math.ceil(dims.height);
+    dims.width = Math.ceil(dims.width);
     dims.height = Math.ceil(dims.height);
 
     return dims;
@@ -251,7 +251,7 @@ function pushMargin(gd) {
         var yanchor = Lib.getYanchor(opts);
         var dims = findDimensions(gd, ax);
 
-        Plots.autoMargin(gd, ax + '-range-selector', {
+        Plots.autoMargin(gd, ax._id + '-range-selector', {
             x: opts.x,
             y: opts.y,
             l: dims.width * FROM_TL[xanchor],
