@@ -1852,6 +1852,7 @@ axes.drawOne = function(gd, ax, opts) {
     var mainPlotinfo = fullLayout._plots[ax._mainSubplot];
     var mainAxLayer = mainPlotinfo[axLetter + 'axislayer'];
     var subplotsWithAx = ax._subplotsWith;
+    var hasRangeSlider = Registry.getComponentMethod('rangeslider', 'isVisible')(ax);
 
     var vals = ax._vals = axes.calcTicks(ax);
 
@@ -2013,9 +2014,16 @@ axes.drawOne = function(gd, ax, opts) {
                 transFn: transFn
             });
         });
+    } else if(hasRangeSlider && ax.side === 'bottom') {
+        // TODO do we really need to recompute _depth here??
+        //      could we instead reuse the stashed version from pushMargin ??
+        seq.push(function() {
+            var llbbox = calcLabelLevelBbox(ax, axId + 'tick');
+            var pos = axes.getPxPosition(gd, ax);
+            var outsideTickLen = ax.ticks === 'outside' ? ax.ticklen : 0;
+            ax._depth = Math.max(llbbox.width > 0 ? llbbox.bottom - pos : 0, outsideTickLen);
+        });
     }
-
-    var hasRangeSlider = Registry.getComponentMethod('rangeslider', 'isVisible')(ax);
 
     if(!opts.skipTitle && !(hasRangeSlider && ax.side === 'bottom')) {
         seq.push(function() { return drawTitle(gd, ax); });
