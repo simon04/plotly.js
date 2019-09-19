@@ -142,10 +142,6 @@ function plot(gd, data, layout, config) {
         return plotLegacyPolar(gd, data, layout);
     }
 
-    // so we don't try to re-call Plotly.plot from inside
-    // legend and colorbar, if margins changed
-    fullLayout._replotting = true;
-
     // make or remake the framework if we need to
     if(graphWasEmpty) makePlotFramework(gd);
 
@@ -157,11 +153,6 @@ function plot(gd, data, layout, config) {
 
     // clear gradient defs on each .plot call, because we know we'll loop through all traces
     Drawing.initGradients(gd);
-
-    // save initial show spikes once per graph
-    if(graphWasEmpty) Axes.saveShowSpikeInitial(gd);
-
-    // prepare the data and find the autorange
 
     // generate calcdata, if we need to
     // to force redoing calcdata, just delete it before calling Plotly.plot
@@ -197,6 +188,8 @@ function plot(gd, data, layout, config) {
         return exports.addFrames(gd, frames);
     }
 
+    // TODO move to subroutines/
+    //
     // draw framework first so that margin-pushing
     // components can position themselves correctly
     var drawFrameworkCalls = 0;
@@ -283,37 +276,29 @@ function plot(gd, data, layout, config) {
         return Plots.previousPromises(gd);
     }
 
-    // draw anything that can affect margins.
-    function marginPushers() {
-        // First reset the list of things that are allowed to change the margins
-        // So any deleted traces or components will be wiped out of the
-        // automargin calculation.
-        // This means *every* margin pusher must be listed here, even if it
-        // doesn't actually try to push the margins until later.
-        Plots.clearAutoMarginIds(gd);
+    function pushMargin() {
+        Registry.getComponentMethod('legend', 'pushMargin')(gd);
+        Registry.getComponentMethod('rangeselector', 'pushMargin')(gd);
+        Registry.getComponentMethod('sliders', 'pushMargin')(gd);
+        Registry.getComponentMethod('updatemenus', 'pushMargin')(gd);
+        Registry.getComponentMethod('colorbar', 'pushMargin')(gd);
+        Axes.pushMargin(gd);
 
-        subroutines.drawMarginPushers(gd);
-        Axes.allowAutoMargin(gd);
-
-        Plots.doAutoMargin(gd);
-        return Plots.previousPromises(gd);
+        return Lib.syncOrAsync([Plots.previousPromises, Plots.doAutoMargin], gd);
     }
 
     // in case the margins changed, draw margin pushers again
-    function marginPushersAgain() {
-        if(!Plots.didMarginChange(oldMargins, fullLayout._size)) return;
+    function pushMarginAgain() {
+        // TODO need to loop more than that ...
+        // TODO need to loop
 
-        return Lib.syncOrAsync([
-            marginPushers,
-            subroutines.layoutStyles
-        ], gd);
+        if(Plots.didMarginChange(oldMargins, fullLayout._size)) {
+            return pushMargin();
+        }
     }
 
     function positionAndAutorange() {
-        if(!recalc) {
-            doAutoRangeAndConstraints();
-            return;
-        }
+        if(!recalc) return doAutoRangeAndConstraints();
 
         // TODO: autosize extra for text markers and images
         // see https://github.com/plotly/plotly.js/issues/1111
@@ -329,17 +314,14 @@ function plot(gd, data, layout, config) {
 
         subroutines.doAutoRangeAndConstraints(gd);
 
-        // store initial ranges *after* enforcing constraints, otherwise
-        // we will never look like we're at the initial ranges
-        if(graphWasEmpty) Axes.saveRangeInitial(gd);
-
+        // TODO move to subroutines.doAutoRangeAndConstraints !
+        //
         // this one is different from shapes/annotations calcAutorange
         // the others incorporate those components into ax._extremes,
         // this one actually sets the ranges in rangesliders.
         Registry.getComponentMethod('rangeslider', 'calcAutorange')(gd);
     }
 
-    // draw ticks, titles, and calculate axis scaling (._b, ._m)
     function drawAxes() {
         return Axes.draw(gd, graphWasEmpty ? '' : 'redraw');
     }
@@ -351,28 +333,34 @@ function plot(gd, data, layout, config) {
     seq.push(
         addFrames,
         drawFramework,
-        marginPushers,
-        marginPushersAgain
+        pushMargin,
+        pushMarginAgain
     );
 
-    if(hasCartesian) seq.push(positionAndAutorange);
+    if(hasCartesian) {
+        seq.push(
+            positionAndAutorange,
+            subroutines.layoutStyles,
+            drawAxes
+        );
+    }
 
-    seq.push(subroutines.layoutStyles);
-    if(hasCartesian) seq.push(drawAxes);
+    if(graphWasEmpty) {
+        // store initial ranges *after* enforcing constraints, otherwise
+        // we will never look like we're at the initial ranges
+        Axes.saveRangeInitial(gd);
+        // save initial show spikes once per graph
+        Axes.saveShowSpikeInitial(gd);
+    }
 
     seq.push(
         subroutines.drawData,
-        subroutines.finalDraw,
+        subroutines.drawMarginPushers,
         subroutines.drawMainTitle,
         initInteractions,
         Plots.addLinks,
         Plots.rehover,
         Plots.redrag,
-        // TODO: doAutoMargin is only needed here for axis automargin, which
-        // happens outside of marginPushers where all the other automargins are
-        // calculated. Would be much better to separate margin calculations from
-        // component drawing - see https://github.com/plotly/plotly.js/issues/2704
-        Plots.doAutoMargin,
         Plots.previousPromises
     );
 
@@ -388,13 +376,7 @@ function plot(gd, data, layout, config) {
 }
 
 function emitAfterPlot(gd) {
-    var fullLayout = gd._fullLayout;
-
-    if(fullLayout._redrawFromAutoMarginCount) {
-        fullLayout._redrawFromAutoMarginCount--;
-    } else {
-        gd.emit('plotly_afterplot');
-    }
+    gd.emit('plotly_afterplot');
 }
 
 function setPlotConfig(obj) {
@@ -1874,13 +1856,21 @@ function relayout(gd, astr, val) {
     } else if(Object.keys(aobj).length) {
         axRangeSupplyDefaultsByPass(gd, flags, specs) || Plots.supplyDefaults(gd);
 
+        // TODO will need additional margin-push logic
         if(flags.legend) seq.push(subroutines.doLegend);
         if(flags.layoutstyle) seq.push(subroutines.layoutStyles);
+        // TODO will need additional margin-push logic
         if(flags.axrange) addAxRangeSequence(seq, specs.rangesAltered);
+        // TODO will need additional margin-push logic
         if(flags.ticks) seq.push(subroutines.doTicksRelayout);
         if(flags.modebar) seq.push(subroutines.doModeBar);
         if(flags.camera) seq.push(subroutines.doCamera);
+        // TODO will need additional margin-push logic
         if(flags.colorbars) seq.push(subroutines.doColorBars);
+
+        // TODO
+        // maybe add something like
+        // seq.push(subroutines.drawMarginPushersIfNeeded)
 
         seq.push(emitAfterPlot);
     }

@@ -287,6 +287,10 @@ function plotOne(gd, plotinfo, cdSubplot, transitionOpts, makeOnCompleteCallback
     }
 }
 
+exports.style = function() {
+
+};
+
 exports.clean = function(newFullData, newFullLayout, oldFullData, oldFullLayout) {
     var oldPlots = oldFullLayout._plots || {};
     var newPlots = newFullLayout._plots || {};
