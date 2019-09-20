@@ -677,5 +677,4 @@ exports.drawMarginPushers = function(gd) {
     Registry.getComponentMethod('sliders', 'draw')(gd);
     Registry.getComponentMethod('updatemenus', 'draw')(gd);
     Registry.getComponentMethod('colorbar', 'draw')(gd);
-    Registry.getComponentMethod('rangeslider', 'draw')(gd);
 };

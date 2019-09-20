@@ -183,7 +183,9 @@ function plot(gd, data, layout, config) {
      */
 
     function addFrames() {
-        return exports.addFrames(gd, frames);
+        if(frames) {
+            return exports.addFrames(gd, frames);
+        }
     }
 
     // TODO move to subroutines/
@@ -192,6 +194,7 @@ function plot(gd, data, layout, config) {
     // components can position themselves correctly
     var drawFrameworkCalls = 0;
     function drawFramework() {
+        // TODO move back to layoutStyles !!
         var basePlotModules = fullLayout._basePlotModules;
         var responsiveAutosize = gd._context.responsive && fullLayout.autosize;
 
@@ -260,6 +263,8 @@ function plot(gd, data, layout, config) {
             }
         }
 
+        // move to layoutStyles !!
+
         if(fullLayout.modebar.orientation === 'h') {
             fullLayout._modebardiv
               .style('height', null)
@@ -282,7 +287,7 @@ function plot(gd, data, layout, config) {
         Registry.getComponentMethod('updatemenus', 'pushMargin')(gd);
         Registry.getComponentMethod('legend', 'pushMargin')(gd);
         Registry.getComponentMethod('colorbar', 'pushMargin')(gd);
-        Axes.pushMargin(gd);
+        if(hasCartesian) Axes.pushMargin(gd);
 
         return Lib.syncOrAsync([Plots.previousPromises, Plots.doAutoMargin], gd);
     }
@@ -299,6 +304,7 @@ function plot(gd, data, layout, config) {
     }
 
     function positionAndAutorange() {
+        if(!hasCartesian) return;
         if(!recalc) return doAutoRangeAndConstraints();
 
         // TODO: autosize extra for text markers and images
@@ -323,48 +329,44 @@ function plot(gd, data, layout, config) {
         Registry.getComponentMethod('rangeslider', 'calcAutorange')(gd);
     }
 
-    function drawAxes() {
-        return Axes.draw(gd, graphWasEmpty ? '' : 'redraw');
+    function saveInitial() {
+        if(graphWasEmpty && hasCartesian) {
+            // store initial ranges *after* enforcing constraints, otherwise
+            // we will never look like we're at the initial ranges
+            Axes.saveRangeInitial(gd);
+            // save initial show spikes once per graph
+            Axes.saveShowSpikeInitial(gd);
+        }
     }
 
-    var seq = [Plots.previousPromises];
+    function drawAxes() {
+        if(hasCartesian) {
+            return Axes.draw(gd, graphWasEmpty ? '' : 'redraw');
+        }
+    }
 
-    if(frames) seq.push(addFrames);
-
-    seq.push(
+    var seq = [
+        Plots.previousPromises,
         addFrames,
         drawFramework,
+        positionAndAutorange,
         pushMargin,
         pushMarginAgain,
-        pushMarginAgain
-    );
-
-    if(hasCartesian) {
-        seq.push(
-            positionAndAutorange,
-            subroutines.layoutStyles,
-            drawAxes
-        );
-    }
-
-    if(graphWasEmpty) {
-        // store initial ranges *after* enforcing constraints, otherwise
-        // we will never look like we're at the initial ranges
-        Axes.saveRangeInitial(gd);
-        // save initial show spikes once per graph
-        Axes.saveShowSpikeInitial(gd);
-    }
-
-    seq.push(
+        pushMarginAgain,
+        positionAndAutorange,
+        saveInitial,
+        subroutines.layoutStyles,
         subroutines.drawData,
         subroutines.drawMarginPushers,
         subroutines.drawMainTitle,
+        drawAxes,
+        subroutines.finalDraw,
         initInteractions,
         Plots.addLinks,
         Plots.rehover,
         Plots.redrag,
         Plots.previousPromises
-    );
+    ];
 
     // even if everything we did was synchronous, return a promise
     // so that the caller doesn't care which route we took
