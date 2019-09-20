@@ -182,8 +182,6 @@ function plot(gd, data, layout, config) {
      * start async-friendly code - now we're actually drawing things
      */
 
-    var oldMargins = Lib.extendFlat({}, fullLayout._size);
-
     function addFrames() {
         return exports.addFrames(gd, frames);
     }
@@ -276,11 +274,13 @@ function plot(gd, data, layout, config) {
         return Plots.previousPromises(gd);
     }
 
+    var oldMargins = Lib.extendFlat({}, fullLayout._size);
+
     function pushMargin() {
-        Registry.getComponentMethod('legend', 'pushMargin')(gd);
         Registry.getComponentMethod('rangeselector', 'pushMargin')(gd);
         Registry.getComponentMethod('sliders', 'pushMargin')(gd);
         Registry.getComponentMethod('updatemenus', 'pushMargin')(gd);
+        Registry.getComponentMethod('legend', 'pushMargin')(gd);
         Registry.getComponentMethod('colorbar', 'pushMargin')(gd);
         Axes.pushMargin(gd);
 
@@ -293,6 +293,7 @@ function plot(gd, data, layout, config) {
         // TODO need to loop
 
         if(Plots.didMarginChange(oldMargins, fullLayout._size)) {
+            oldMargins = Lib.extendFlat({}, fullLayout._size);
             return pushMargin();
         }
     }
@@ -334,6 +335,7 @@ function plot(gd, data, layout, config) {
         addFrames,
         drawFramework,
         pushMargin,
+        pushMarginAgain,
         pushMarginAgain
     );
 
