@@ -8,14 +8,12 @@
 
 'use strict';
 
-var d3 = require('d3');
 var Registry = require('../registry');
 var Plots = require('../plots/plots');
 
 var Lib = require('../lib');
 var clearGlCanvases = require('../lib/clear_gl_canvases');
 
-var Color = require('../components/color');
 var Drawing = require('../components/drawing');
 var Titles = require('../components/titles');
 var ModeBar = require('../components/modebar');
@@ -27,413 +25,80 @@ var enforceAxisConstraints = axisConstraints.enforce;
 var cleanAxisConstraints = axisConstraints.clean;
 var doAutoRange = require('../plots/cartesian/autorange').doAutoRange;
 
-var SVG_TEXT_ANCHOR_START = 'start';
-var SVG_TEXT_ANCHOR_MIDDLE = 'middle';
-var SVG_TEXT_ANCHOR_END = 'end';
-
-function overlappingDomain(xDomain, yDomain, domains) {
-    for(var i = 0; i < domains.length; i++) {
-        var existingX = domains[i][0];
-        var existingY = domains[i][1];
-
-        if(existingX[0] >= xDomain[1] || existingX[1] <= xDomain[0]) {
-            continue;
-        }
-        if(existingY[0] < yDomain[1] && existingY[1] > yDomain[0]) {
-            return true;
-        }
-    }
-    return false;
-}
-
 exports.layoutStyles = function(gd) {
-    // var fullLayout = gd._fullLayout;
-    // var basePlotModules = fullLayout._basePlotModules;
-    // for(var i = 0; i < basePlotModules.length; i++) {
-    //     var styleFn = basePlotModules[i].style;
-    //     if(styleFn) styleFn(gd);
-    // }
-
-    // TODO move to Cartesian.style
-
     var fullLayout = gd._fullLayout;
-    var gs = fullLayout._size;
-    var pad = gs.p;
-    var axList = Axes.list(gd, '', true);
-    var i, subplot, plotinfo, xa, ya;
 
-    // figure out which backgrounds we need to draw,
-    // and in which layers to put them
-    var lowerBackgroundIDs = [];
-    var backgroundIds = [];
-    var lowerDomains = [];
-    // no need to draw background when paper and plot color are the same color,
-    // activate mode just for large splom (which benefit the most from this
-    // optimization), but this could apply to all cartesian subplots.
-    var noNeedForBg = (
-        Color.opacity(fullLayout.paper_bgcolor) === 1 &&
-        Color.opacity(fullLayout.plot_bgcolor) === 1 &&
-        fullLayout.paper_bgcolor === fullLayout.plot_bgcolor
-    );
+    var responsiveAutosize = gd._context.responsive && fullLayout.autosize;
+    fullLayout._paperdiv.style({
+        width: (responsiveAutosize && !gd._context._hasZeroWidth && !gd.layout.width) ?
+            '100%' : fullLayout.width + 'px',
+        height: (responsiveAutosize && !gd._context._hasZeroHeight && !gd.layout.height) ?
+            '100%' : fullLayout.height + 'px'
+    })
+    .selectAll('.main-svg')
+    .call(Drawing.setSize, fullLayout.width, fullLayout.height);
 
-    for(subplot in fullLayout._plots) {
-        plotinfo = fullLayout._plots[subplot];
+    gd._context.setBackground(gd, fullLayout.paper_bgcolor);
 
-        if(plotinfo.mainplot) {
-            // mainplot is a reference to the main plot this one is overlaid on
-            // so if it exists, this is an overlaid plot and we don't need to
-            // give it its own background
-            if(plotinfo.bg) {
-                plotinfo.bg.remove();
-            }
-            plotinfo.bg = undefined;
-        } else {
-            var xDomain = plotinfo.xaxis.domain;
-            var yDomain = plotinfo.yaxis.domain;
-            var plotgroup = plotinfo.plotgroup;
-
-            if(overlappingDomain(xDomain, yDomain, lowerDomains)) {
-                var pgNode = plotgroup.node();
-                var plotgroupBg = plotinfo.bg = Lib.ensureSingle(plotgroup, 'rect', 'bg');
-                pgNode.insertBefore(plotgroupBg.node(), pgNode.childNodes[0]);
-                backgroundIds.push(subplot);
-            } else {
-                plotgroup.select('rect.bg').remove();
-                lowerDomains.push([xDomain, yDomain]);
-                if(!noNeedForBg) {
-                    lowerBackgroundIDs.push(subplot);
-                    backgroundIds.push(subplot);
-                }
-            }
-        }
+    var basePlotModules = fullLayout._basePlotModules;
+    for(var i = 0; i < basePlotModules.length; i++) {
+        var styleFn = basePlotModules[i].style;
+        if(styleFn) styleFn(gd);
     }
 
-    // now create all the lower-layer backgrounds at once now that
-    // we have the list of subplots that need them
-    var lowerBackgrounds = fullLayout._bgLayer.selectAll('.bg')
-        .data(lowerBackgroundIDs);
-
-    lowerBackgrounds.enter().append('rect')
-        .classed('bg', true);
-
-    lowerBackgrounds.exit().remove();
-
-    lowerBackgrounds.each(function(subplot) {
-        fullLayout._plots[subplot].bg = d3.select(this);
-    });
-
-    // style all backgrounds
-    for(i = 0; i < backgroundIds.length; i++) {
-        plotinfo = fullLayout._plots[backgroundIds[i]];
-        xa = plotinfo.xaxis;
-        ya = plotinfo.yaxis;
-
-        if(plotinfo.bg) {
-            plotinfo.bg
-                .call(Drawing.setRect,
-                    xa._offset - pad, ya._offset - pad,
-                    xa._length + 2 * pad, ya._length + 2 * pad)
-                .call(Color.fill, fullLayout.plot_bgcolor)
-                .style('stroke-width', 0);
-        }
+    if(fullLayout.modebar.orientation === 'h') {
+        fullLayout._modebardiv
+          .style('height', null)
+          .style('width', '100%');
+    } else {
+        fullLayout._modebardiv
+          .style('width', null)
+          .style('height', fullLayout.height + 'px');
     }
-
-    if(!fullLayout._hasOnlyLargeSploms) {
-        for(subplot in fullLayout._plots) {
-            plotinfo = fullLayout._plots[subplot];
-            xa = plotinfo.xaxis;
-            ya = plotinfo.yaxis;
-
-            // Clip so that data only shows up on the plot area.
-            var clipId = plotinfo.clipId = 'clip' + fullLayout._uid + subplot + 'plot';
-
-            var plotClip = Lib.ensureSingleById(fullLayout._clips, 'clipPath', clipId, function(s) {
-                s.classed('plotclip', true)
-                    .append('rect');
-            });
-
-            plotinfo.clipRect = plotClip.select('rect').attr({
-                width: xa._length,
-                height: ya._length
-            });
-
-            Drawing.setTranslate(plotinfo.plot, xa._offset, ya._offset);
-
-            var plotClipId;
-            var layerClipId;
-
-            if(plotinfo._hasClipOnAxisFalse) {
-                plotClipId = null;
-                layerClipId = clipId;
-            } else {
-                plotClipId = clipId;
-                layerClipId = null;
-            }
-
-            Drawing.setClipUrl(plotinfo.plot, plotClipId, gd);
-
-            // stash layer clipId value (null or same as clipId)
-            // to DRY up Drawing.setClipUrl calls on trace-module and trace layers
-            // downstream
-            plotinfo.layerClipId = layerClipId;
-        }
-    }
-
-    var xLinesXLeft, xLinesXRight, xLinesYBottom, xLinesYTop,
-        leftYLineWidth, rightYLineWidth;
-    var yLinesYBottom, yLinesYTop, yLinesXLeft, yLinesXRight,
-        connectYBottom, connectYTop;
-    var extraSubplot;
-
-    function xLinePath(y) {
-        return 'M' + xLinesXLeft + ',' + y + 'H' + xLinesXRight;
-    }
-
-    function xLinePathFree(y) {
-        return 'M' + xa._offset + ',' + y + 'h' + xa._length;
-    }
-
-    function yLinePath(x) {
-        return 'M' + x + ',' + yLinesYTop + 'V' + yLinesYBottom;
-    }
-
-    function yLinePathFree(x) {
-        return 'M' + x + ',' + ya._offset + 'v' + ya._length;
-    }
-
-    function mainPath(ax, pathFn, pathFnFree) {
-        if(!ax.showline || subplot !== ax._mainSubplot) return '';
-        var mainLinePosition = Axes.getAxisLinePosition(gd, ax);
-        if(!ax._anchorAxis) return pathFnFree(mainLinePosition);
-        var out = pathFn(mainLinePosition);
-        if(ax.mirror) out += pathFn(Axes.getAxisMirrorLinePosition(gd, ax));
-        return out;
-    }
-
-    for(subplot in fullLayout._plots) {
-        plotinfo = fullLayout._plots[subplot];
-        xa = plotinfo.xaxis;
-        ya = plotinfo.yaxis;
-
-        /*
-         * x lines get longer where they meet y lines, to make a crisp corner.
-         * The x lines get the padding (margin.pad) plus the y line width to
-         * fill up the corner nicely. Free x lines are excluded - they always
-         * span exactly the data area of the plot
-         *
-         *  | XXXXX
-         *  | XXXXX
-         *  |
-         *  +------
-         *     x1
-         *    -----
-         *     x2
-         */
-        var xPath = 'M0,0';
-        if(shouldShowLinesOrTicks(xa, subplot)) {
-            leftYLineWidth = findCounterAxisLineWidth(gd, xa, 'left', ya, axList);
-            xLinesXLeft = xa._offset - (leftYLineWidth ? (pad + leftYLineWidth) : 0);
-            rightYLineWidth = findCounterAxisLineWidth(gd, xa, 'right', ya, axList);
-            xLinesXRight = xa._offset + xa._length + (rightYLineWidth ? (pad + rightYLineWidth) : 0);
-            xLinesYBottom = Axes.getAxisLinePosition(gd, xa, ya, 'bottom');
-            xLinesYTop = Axes.getAxisLinePosition(gd, xa, ya, 'top');
-
-            // save axis line positions for extra ticks to reference
-            // each subplot that gets ticks from "allticks" gets an entry:
-            //    [left or bottom, right or top]
-            extraSubplot = (!xa._anchorAxis || subplot !== xa._mainSubplot);
-            xPath = mainPath(xa, xLinePath, xLinePathFree);
-            if(extraSubplot && xa.showline && (xa.mirror === 'all' || xa.mirror === 'allticks')) {
-                xPath += xLinePath(xLinesYBottom) + xLinePath(xLinesYTop);
-            }
-
-            plotinfo.xlines
-                .style('stroke-width', crispRoundLineWidth(gd, xa) + 'px')
-                .call(Color.stroke, xa.showline ? xa.linecolor : 'rgba(0,0,0,0)');
-        }
-        plotinfo.xlines.attr('d', xPath);
-
-        /*
-         * y lines that meet x axes get longer only by margin.pad, because
-         * the x axes fill in the corner space. Free y axes, like free x axes,
-         * always span exactly the data area of the plot
-         *
-         *   |   | XXXX
-         * y2| y1| XXXX
-         *   |   | XXXX
-         *       |
-         *       +-----
-         */
-        var yPath = 'M0,0';
-        if(shouldShowLinesOrTicks(ya, subplot)) {
-            connectYBottom = findCounterAxisLineWidth(gd, ya, 'bottom', xa, axList);
-            yLinesYBottom = ya._offset + ya._length + (connectYBottom ? pad : 0);
-            connectYTop = findCounterAxisLineWidth(gd, ya, 'top', xa, axList);
-            yLinesYTop = ya._offset - (connectYTop ? pad : 0);
-            yLinesXLeft = Axes.getAxisLinePosition(gd, ya, xa, 'left');
-            yLinesXRight = Axes.getAxisLinePosition(gd, ya, xa, 'right');
-
-            extraSubplot = (!ya._anchorAxis || subplot !== ya._mainSubplot);
-            yPath = mainPath(ya, yLinePath, yLinePathFree);
-            if(extraSubplot && ya.showline && (ya.mirror === 'all' || ya.mirror === 'allticks')) {
-                yPath += yLinePath(yLinesXLeft) + yLinePath(yLinesXRight);
-            }
-
-            plotinfo.ylines
-                .style('stroke-width', crispRoundLineWidth(gd, ya) + 'px')
-                .call(Color.stroke, ya.showline ? ya.linecolor : 'rgba(0,0,0,0)');
-        }
-        plotinfo.ylines.attr('d', yPath);
-    }
-
-    Axes.makeClipPaths(gd);
-
-    return Plots.previousPromises(gd);
+    ModeBar.manage(gd);
 };
-
-function shouldShowLinesOrTicks(ax, subplot) {
-    return (ax.ticks || ax.showline) &&
-        (subplot === ax._mainSubplot || ax.mirror === 'all' || ax.mirror === 'allticks');
-}
-
-/*
- * should we draw a line on counterAx at this side of ax?
- * It's assumed that counterAx is known to overlay the subplot we're working on
- * but it may not be its main axis.
- */
-function shouldShowLineThisSide(gd, ax, side, counterAx) {
-    // does counterAx get a line at all?
-    if(!counterAx.showline || !crispRoundLineWidth(gd, ax)) return false;
-
-    // are we drawing *all* lines for counterAx?
-    if(counterAx.mirror === 'all' || counterAx.mirror === 'allticks') return true;
-
-    var anchorAx = counterAx._anchorAxis;
-
-    // is this a free axis? free axes can only have a subplot side-line with all(ticks)? mirroring
-    if(!anchorAx) return false;
-
-    // in order to handle cases where the user forgot to anchor this axis correctly
-    // (because its default anchor has the same domain on the relevant end)
-    // check whether the relevant position is the same.
-    var sideIndex = alignmentConstants.FROM_BL[side];
-    if(counterAx.side === side) {
-        return anchorAx.domain[sideIndex] === ax.domain[sideIndex];
-    }
-    return counterAx.mirror && anchorAx.domain[1 - sideIndex] === ax.domain[1 - sideIndex];
-}
-
-/*
- * Is there another axis intersecting `side` end of `ax`?
- * First look at `counterAx` (the axis for this subplot),
- * then at all other potential counteraxes on or overlaying this subplot.
- * Take the line width from the first one that has a line.
- */
-function findCounterAxisLineWidth(gd, ax, side, counterAx, axList) {
-    if(shouldShowLineThisSide(gd, ax, side, counterAx)) {
-        return crispRoundLineWidth(gd, counterAx);
-    }
-    for(var i = 0; i < axList.length; i++) {
-        var axi = axList[i];
-        if(axi._mainAxis === counterAx._mainAxis && shouldShowLineThisSide(gd, ax, side, axi)) {
-            return crispRoundLineWidth(gd, axi);
-        }
-    }
-    return 0;
-}
-
-function crispRoundLineWidth(gd, ax) {
-    return Drawing.crispRound(gd, ax.linewidth, 1);
-}
 
 exports.drawMainTitle = function(gd) {
     var fullLayout = gd._fullLayout;
+    var title = fullLayout.title;
+    var gs = fullLayout._size;
 
-    var textAnchor = getMainTitleTextAnchor(fullLayout);
-    var dy = getMainTitleDy(fullLayout);
+    var textAnchor = Lib.isRightAnchor(title) ? 'end' :
+        Lib.isLeftAnchor(title) ? 'start' :
+        'middle';
+
+    var dy = Lib.isTopAnchor(title) ? alignmentConstants.CAP_SHIFT :
+        Lib.isMiddleAnchor(title) ? alignmentConstants.MID_SHIFT :
+        '0';
+
+    var hPadShift = textAnchor === 'start' ? title.psd.l :
+        textAnchor === 'end' ? title.pad.r :
+        0;
+
+    var mainX = title.xref === 'paper' ?
+        gs.l + gs.w * title.x + hPadShift :
+        fullLayout.width * title.x + hPadShift;
+
+    var vPadShift = !dy ? -title.pad.b :
+        Lib.isMiddleAnchor(title) ? title.pad.t :
+        0;
+
+    var mainY = title.y === 'auto' ? gs.t / 2 :
+        title.yref === 'paper' ? gs.t - gs.h * title.y + vPadShift :
+            fullLayout.height * (1 - title.y) + vPadShift;
 
     Titles.draw(gd, 'gtitle', {
         propContainer: fullLayout,
         propName: 'title.text',
         placeholder: fullLayout._dfltTitle.plot,
         attributes: {
-            x: getMainTitleX(fullLayout, textAnchor),
-            y: getMainTitleY(fullLayout, dy),
+            x: mainX,
+            y: mainY,
             'text-anchor': textAnchor,
-            dy: dy
+            dy: dy + 'em'
         }
     });
 };
-
-function getMainTitleX(fullLayout, textAnchor) {
-    var title = fullLayout.title;
-    var gs = fullLayout._size;
-    var hPadShift = 0;
-
-    if(textAnchor === SVG_TEXT_ANCHOR_START) {
-        hPadShift = title.pad.l;
-    } else if(textAnchor === SVG_TEXT_ANCHOR_END) {
-        hPadShift = -title.pad.r;
-    }
-
-    switch(title.xref) {
-        case 'paper':
-            return gs.l + gs.w * title.x + hPadShift;
-        case 'container':
-        default:
-            return fullLayout.width * title.x + hPadShift;
-    }
-}
-
-function getMainTitleY(fullLayout, dy) {
-    var title = fullLayout.title;
-    var gs = fullLayout._size;
-    var vPadShift = 0;
-
-    if(dy === '0em' || !dy) {
-        vPadShift = -title.pad.b;
-    } else if(dy === alignmentConstants.CAP_SHIFT + 'em') {
-        vPadShift = title.pad.t;
-    }
-
-    if(title.y === 'auto') {
-        return gs.t / 2;
-    } else {
-        switch(title.yref) {
-            case 'paper':
-                return gs.t + gs.h - gs.h * title.y + vPadShift;
-            case 'container':
-            default:
-                return fullLayout.height - fullLayout.height * title.y + vPadShift;
-        }
-    }
-}
-
-function getMainTitleTextAnchor(fullLayout) {
-    var title = fullLayout.title;
-
-    var textAnchor = SVG_TEXT_ANCHOR_MIDDLE;
-    if(Lib.isRightAnchor(title)) {
-        textAnchor = SVG_TEXT_ANCHOR_END;
-    } else if(Lib.isLeftAnchor(title)) {
-        textAnchor = SVG_TEXT_ANCHOR_START;
-    }
-
-    return textAnchor;
-}
-
-function getMainTitleDy(fullLayout) {
-    var title = fullLayout.title;
-
-    var dy = '0em';
-    if(Lib.isTopAnchor(title)) {
-        dy = alignmentConstants.CAP_SHIFT + 'em';
-    } else if(Lib.isMiddleAnchor(title)) {
-        dy = alignmentConstants.MID_SHIFT + 'em';
-    }
-
-    return dy;
-}
 
 exports.doTraceStyle = function(gd) {
     var calcdata = gd.calcdata;

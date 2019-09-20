@@ -15,11 +15,15 @@ var Registry = require('../../registry');
 var Lib = require('../../lib');
 var Plots = require('../plots');
 var Drawing = require('../../components/drawing');
+var Color = require('../../components/color');
 
 var getModuleCalcData = require('../get_data').getModuleCalcData;
+var xmlnsNamespaces = require('../../constants/xmlns_namespaces');
+var FROM_BL = require('../../constants/alignment').FROM_BL;
+
+var Axes = require('./axes');
 var axisIds = require('./axis_ids');
 var constants = require('./constants');
-var xmlnsNamespaces = require('../../constants/xmlns_namespaces');
 
 var ensureSingle = Lib.ensureSingle;
 
@@ -287,8 +291,310 @@ function plotOne(gd, plotinfo, cdSubplot, transitionOpts, makeOnCompleteCallback
     }
 }
 
-exports.style = function() {
+exports.style = function(gd) {
+    var fullLayout = gd._fullLayout;
+    var gs = fullLayout._size;
+    var pad = gs.p;
+    var axList = Axes.list(gd, '', true);
+    var i, subplot, plotinfo, xa, ya;
 
+    function overlappingDomain(xDomain, yDomain, domains) {
+        for(var i = 0; i < domains.length; i++) {
+            var existingX = domains[i][0];
+            var existingY = domains[i][1];
+
+            if(existingX[0] >= xDomain[1] || existingX[1] <= xDomain[0]) {
+                continue;
+            }
+            if(existingY[0] < yDomain[1] && existingY[1] > yDomain[0]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function shouldShowLinesOrTicks(ax, subplot) {
+        return (ax.ticks || ax.showline) &&
+            (subplot === ax._mainSubplot || ax.mirror === 'all' || ax.mirror === 'allticks');
+    }
+
+    /*
+     * should we draw a line on counterAx at this side of ax?
+     * It's assumed that counterAx is known to overlay the subplot we're working on
+     * but it may not be its main axis.
+     */
+    function shouldShowLineThisSide(ax, side, counterAx) {
+        // does counterAx get a line at all?
+        if(!counterAx.showline || !crispRoundLineWidth(ax)) return false;
+
+        // are we drawing *all* lines for counterAx?
+        if(counterAx.mirror === 'all' || counterAx.mirror === 'allticks') return true;
+
+        var anchorAx = counterAx._anchorAxis;
+
+        // is this a free axis? free axes can only have a subplot side-line with all(ticks)? mirroring
+        if(!anchorAx) return false;
+
+        // in order to handle cases where the user forgot to anchor this axis correctly
+        // (because its default anchor has the same domain on the relevant end)
+        // check whether the relevant position is the same.
+        var sideIndex = FROM_BL[side];
+        if(counterAx.side === side) {
+            return anchorAx.domain[sideIndex] === ax.domain[sideIndex];
+        }
+        return counterAx.mirror && anchorAx.domain[1 - sideIndex] === ax.domain[1 - sideIndex];
+    }
+
+    /*
+     * Is there another axis intersecting `side` end of `ax`?
+     * First look at `counterAx` (the axis for this subplot),
+     * then at all other potential counteraxes on or overlaying this subplot.
+     * Take the line width from the first one that has a line.
+     */
+    function findCounterAxisLineWidth(ax, side, counterAx, axList) {
+        if(shouldShowLineThisSide(ax, side, counterAx)) {
+            return crispRoundLineWidth(counterAx);
+        }
+        for(var i = 0; i < axList.length; i++) {
+            var axi = axList[i];
+            if(axi._mainAxis === counterAx._mainAxis && shouldShowLineThisSide(ax, side, axi)) {
+                return crispRoundLineWidth(axi);
+            }
+        }
+        return 0;
+    }
+
+    function crispRoundLineWidth(ax) {
+        return Drawing.crispRound(gd, ax.linewidth, 1);
+    }
+
+    // figure out which backgrounds we need to draw,
+    // and in which layers to put them
+    var lowerBackgroundIDs = [];
+    var backgroundIds = [];
+    var lowerDomains = [];
+    // no need to draw background when paper and plot color are the same color,
+    // activate mode just for large splom (which benefit the most from this
+    // optimization), but this could apply to all cartesian subplots.
+    var noNeedForBg = (
+        Color.opacity(fullLayout.paper_bgcolor) === 1 &&
+        Color.opacity(fullLayout.plot_bgcolor) === 1 &&
+        fullLayout.paper_bgcolor === fullLayout.plot_bgcolor
+    );
+
+    for(subplot in fullLayout._plots) {
+        plotinfo = fullLayout._plots[subplot];
+
+        if(plotinfo.mainplot) {
+            // mainplot is a reference to the main plot this one is overlaid on
+            // so if it exists, this is an overlaid plot and we don't need to
+            // give it its own background
+            if(plotinfo.bg) {
+                plotinfo.bg.remove();
+            }
+            plotinfo.bg = undefined;
+        } else {
+            var xDomain = plotinfo.xaxis.domain;
+            var yDomain = plotinfo.yaxis.domain;
+            var plotgroup = plotinfo.plotgroup;
+
+            if(overlappingDomain(xDomain, yDomain, lowerDomains)) {
+                var pgNode = plotgroup.node();
+                var plotgroupBg = plotinfo.bg = Lib.ensureSingle(plotgroup, 'rect', 'bg');
+                pgNode.insertBefore(plotgroupBg.node(), pgNode.childNodes[0]);
+                backgroundIds.push(subplot);
+            } else {
+                plotgroup.select('rect.bg').remove();
+                lowerDomains.push([xDomain, yDomain]);
+                if(!noNeedForBg) {
+                    lowerBackgroundIDs.push(subplot);
+                    backgroundIds.push(subplot);
+                }
+            }
+        }
+    }
+
+    // now create all the lower-layer backgrounds at once now that
+    // we have the list of subplots that need them
+    var lowerBackgrounds = fullLayout._bgLayer.selectAll('.bg')
+        .data(lowerBackgroundIDs);
+
+    lowerBackgrounds.enter().append('rect')
+        .classed('bg', true);
+
+    lowerBackgrounds.exit().remove();
+
+    lowerBackgrounds.each(function(subplot) {
+        fullLayout._plots[subplot].bg = d3.select(this);
+    });
+
+    // style all backgrounds
+    for(i = 0; i < backgroundIds.length; i++) {
+        plotinfo = fullLayout._plots[backgroundIds[i]];
+        xa = plotinfo.xaxis;
+        ya = plotinfo.yaxis;
+
+        if(plotinfo.bg) {
+            plotinfo.bg
+                .call(Drawing.setRect,
+                    xa._offset - pad, ya._offset - pad,
+                    xa._length + 2 * pad, ya._length + 2 * pad)
+                .call(Color.fill, fullLayout.plot_bgcolor)
+                .style('stroke-width', 0);
+        }
+    }
+
+    if(!fullLayout._hasOnlyLargeSploms) {
+        for(subplot in fullLayout._plots) {
+            plotinfo = fullLayout._plots[subplot];
+            xa = plotinfo.xaxis;
+            ya = plotinfo.yaxis;
+
+            // Clip so that data only shows up on the plot area.
+            var clipId = plotinfo.clipId = 'clip' + fullLayout._uid + subplot + 'plot';
+
+            var plotClip = Lib.ensureSingleById(fullLayout._clips, 'clipPath', clipId, function(s) {
+                s.classed('plotclip', true)
+                    .append('rect');
+            });
+
+            plotinfo.clipRect = plotClip.select('rect').attr({
+                width: xa._length,
+                height: ya._length
+            });
+
+            Drawing.setTranslate(plotinfo.plot, xa._offset, ya._offset);
+
+            var plotClipId;
+            var layerClipId;
+
+            if(plotinfo._hasClipOnAxisFalse) {
+                plotClipId = null;
+                layerClipId = clipId;
+            } else {
+                plotClipId = clipId;
+                layerClipId = null;
+            }
+
+            Drawing.setClipUrl(plotinfo.plot, plotClipId, gd);
+
+            // stash layer clipId value (null or same as clipId)
+            // to DRY up Drawing.setClipUrl calls on trace-module and trace layers
+            // downstream
+            plotinfo.layerClipId = layerClipId;
+        }
+    }
+
+    var xLinesXLeft, xLinesXRight, xLinesYBottom, xLinesYTop,
+        leftYLineWidth, rightYLineWidth;
+    var yLinesYBottom, yLinesYTop, yLinesXLeft, yLinesXRight,
+        connectYBottom, connectYTop;
+    var extraSubplot;
+
+    function xLinePath(y) {
+        return 'M' + xLinesXLeft + ',' + y + 'H' + xLinesXRight;
+    }
+
+    function xLinePathFree(y) {
+        return 'M' + xa._offset + ',' + y + 'h' + xa._length;
+    }
+
+    function yLinePath(x) {
+        return 'M' + x + ',' + yLinesYTop + 'V' + yLinesYBottom;
+    }
+
+    function yLinePathFree(x) {
+        return 'M' + x + ',' + ya._offset + 'v' + ya._length;
+    }
+
+    function mainPath(ax, pathFn, pathFnFree) {
+        if(!ax.showline || subplot !== ax._mainSubplot) return '';
+        var mainLinePosition = Axes.getAxisLinePosition(gd, ax);
+        if(!ax._anchorAxis) return pathFnFree(mainLinePosition);
+        var out = pathFn(mainLinePosition);
+        if(ax.mirror) out += pathFn(Axes.getAxisMirrorLinePosition(gd, ax));
+        return out;
+    }
+
+    for(subplot in fullLayout._plots) {
+        plotinfo = fullLayout._plots[subplot];
+        xa = plotinfo.xaxis;
+        ya = plotinfo.yaxis;
+
+        /*
+         * x lines get longer where they meet y lines, to make a crisp corner.
+         * The x lines get the padding (margin.pad) plus the y line width to
+         * fill up the corner nicely. Free x lines are excluded - they always
+         * span exactly the data area of the plot
+         *
+         *  | XXXXX
+         *  | XXXXX
+         *  |
+         *  +------
+         *     x1
+         *    -----
+         *     x2
+         */
+        var xPath = 'M0,0';
+        if(shouldShowLinesOrTicks(xa, subplot)) {
+            leftYLineWidth = findCounterAxisLineWidth(xa, 'left', ya, axList);
+            xLinesXLeft = xa._offset - (leftYLineWidth ? (pad + leftYLineWidth) : 0);
+            rightYLineWidth = findCounterAxisLineWidth(xa, 'right', ya, axList);
+            xLinesXRight = xa._offset + xa._length + (rightYLineWidth ? (pad + rightYLineWidth) : 0);
+            xLinesYBottom = Axes.getAxisLinePosition(gd, xa, ya, 'bottom');
+            xLinesYTop = Axes.getAxisLinePosition(gd, xa, ya, 'top');
+
+            // save axis line positions for extra ticks to reference
+            // each subplot that gets ticks from "allticks" gets an entry:
+            //    [left or bottom, right or top]
+            extraSubplot = (!xa._anchorAxis || subplot !== xa._mainSubplot);
+            xPath = mainPath(xa, xLinePath, xLinePathFree);
+            if(extraSubplot && xa.showline && (xa.mirror === 'all' || xa.mirror === 'allticks')) {
+                xPath += xLinePath(xLinesYBottom) + xLinePath(xLinesYTop);
+            }
+
+            plotinfo.xlines
+                .style('stroke-width', crispRoundLineWidth(xa) + 'px')
+                .call(Color.stroke, xa.showline ? xa.linecolor : 'rgba(0,0,0,0)');
+        }
+        plotinfo.xlines.attr('d', xPath);
+
+        /*
+         * y lines that meet x axes get longer only by margin.pad, because
+         * the x axes fill in the corner space. Free y axes, like free x axes,
+         * always span exactly the data area of the plot
+         *
+         *   |   | XXXX
+         * y2| y1| XXXX
+         *   |   | XXXX
+         *       |
+         *       +-----
+         */
+        var yPath = 'M0,0';
+        if(shouldShowLinesOrTicks(ya, subplot)) {
+            connectYBottom = findCounterAxisLineWidth(ya, 'bottom', xa, axList);
+            yLinesYBottom = ya._offset + ya._length + (connectYBottom ? pad : 0);
+            connectYTop = findCounterAxisLineWidth(ya, 'top', xa, axList);
+            yLinesYTop = ya._offset - (connectYTop ? pad : 0);
+            yLinesXLeft = Axes.getAxisLinePosition(gd, ya, xa, 'left');
+            yLinesXRight = Axes.getAxisLinePosition(gd, ya, xa, 'right');
+
+            extraSubplot = (!ya._anchorAxis || subplot !== ya._mainSubplot);
+            yPath = mainPath(ya, yLinePath, yLinePathFree);
+            if(extraSubplot && ya.showline && (ya.mirror === 'all' || ya.mirror === 'allticks')) {
+                yPath += yLinePath(yLinesXLeft) + yLinePath(yLinesXRight);
+            }
+
+            plotinfo.ylines
+                .style('stroke-width', crispRoundLineWidth(ya) + 'px')
+                .call(Color.stroke, ya.showline ? ya.linecolor : 'rgba(0,0,0,0)');
+        }
+        plotinfo.ylines.attr('d', yPath);
+    }
+
+    Axes.makeClipPaths(gd);
+
+    return Plots.previousPromises(gd);
 };
 
 exports.clean = function(newFullData, newFullLayout, oldFullData, oldFullLayout) {

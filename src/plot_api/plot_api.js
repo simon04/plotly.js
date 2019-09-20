@@ -24,7 +24,6 @@ var Plots = require('../plots/plots');
 var Polar = require('../plots/polar/legacy');
 
 var Axes = require('../plots/cartesian/axes');
-var ModeBar = require('../components/modebar');
 var Drawing = require('../components/drawing');
 var Color = require('../components/color');
 var initInteractions = require('../plots/cartesian/graph_interact').initInteractions;
@@ -188,26 +187,9 @@ function plot(gd, data, layout, config) {
         }
     }
 
-    // TODO move to subroutines/
-    //
-    // draw framework first so that margin-pushing
-    // components can position themselves correctly
     var drawFrameworkCalls = 0;
     function drawFramework() {
-        // TODO move back to layoutStyles !!
         var basePlotModules = fullLayout._basePlotModules;
-        var responsiveAutosize = gd._context.responsive && fullLayout.autosize;
-
-        fullLayout._paperdiv.style({
-            width: (responsiveAutosize && !gd._context._hasZeroWidth && !gd.layout.width) ?
-                '100%' : fullLayout.width + 'px',
-            height: (responsiveAutosize && !gd._context._hasZeroHeight && !gd.layout.height) ?
-                '100%' : fullLayout.height + 'px'
-        })
-        .selectAll('.main-svg')
-        .call(Drawing.setSize, fullLayout.width, fullLayout.height);
-
-        gd._context.setBackground(gd, fullLayout.paper_bgcolor);
 
         for(var i = 0; i < basePlotModules.length; i++) {
             if(basePlotModules[i].drawFramework) {
@@ -262,19 +244,6 @@ function plot(gd, data, layout, config) {
                 }
             }
         }
-
-        // move to layoutStyles !!
-
-        if(fullLayout.modebar.orientation === 'h') {
-            fullLayout._modebardiv
-              .style('height', null)
-              .style('width', '100%');
-        } else {
-            fullLayout._modebardiv
-              .style('width', null)
-              .style('height', fullLayout.height + 'px');
-        }
-        ModeBar.manage(gd);
 
         return Plots.previousPromises(gd);
     }
