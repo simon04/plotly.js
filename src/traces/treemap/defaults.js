@@ -72,11 +72,16 @@ module.exports = function supplyDefaults(traceIn, traceOut, defaultColor, layout
     var lineWidth = coerce('marker.line.width');
     if(lineWidth) coerce('marker.line.color', layout.paper_bgcolor);
 
-    coerce('marker.colors');
+    var colors = coerce('marker.colors');
     var withColorscale = traceOut._hasColorscale = hasColorscale(traceIn, 'marker', 'colors');
     if(withColorscale) {
         colorscaleDefaults(traceIn, traceOut, layout, coerce, {prefix: 'marker.', cLetter: 'c'});
     }
+
+    // TODO -- something like this!
+    // if(!colors.length) {
+    //     coerce('marker.depthfade');
+    // }
 
     var headerSize = traceOut.textfont.size * 2;
 
