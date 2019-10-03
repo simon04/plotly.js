@@ -43,20 +43,17 @@ function styleOne(s, pt, trace, opts) {
         lineWidth = trace._hovered.marker.line.width;
         opacity = trace._hovered.marker.opacity;
     } else {
-        if(!pt.onPathbar &&
-            !trace._hasColorscale &&
-            !helpers.isLeaf(pt) &&
-            !helpers.isHierarchyRoot(pt)
-        ) {
-            var opacitybase = trace.marker.opacitybase;
+        if(!pt.onPathbar && !trace._hasColorscale /* && trace.marker.depthfade */) {
+            var i = trace._maxVisibleLayers - 1;
 
-            fillColor = Color.combine(
-                Color.addOpacity(cdi.color,
-                    opacitybase + (1 - opacitybase) *
-                    (pt.data.depth - trace._entryDepth) / trace._maxVisibleLayers
-                ),
-                trace._backgroundColor
-            );
+            // TODO
+            // - make this work for case with set trace.maxdepth
+            // - find best opacity value
+
+            while(i > pt.data.depth) {
+                fillColor = Color.combine(Color.addOpacity(trace._backgroundColor, 0.2), fillColor);
+                i--;
+            }
         }
 
         if(helpers.isHierarchyRoot(pt)) {

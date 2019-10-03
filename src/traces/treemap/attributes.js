@@ -139,6 +139,7 @@ module.exports = {
 
         colors: sunburstAttrs.marker.colors,
 
+        // TODO drop this!
         opacitybase: {
             valType: 'number',
             editType: 'style',
@@ -152,6 +153,8 @@ module.exports = {
                 'This options is not available when having a `colorscale`.',
             ].join(' ')
         },
+
+        // TODO add depthfade boolean !
 
         line: sunburstAttrs.marker.line,
 
