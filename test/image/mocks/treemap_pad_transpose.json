@@ -15,7 +15,6 @@
             },
             "marker": {
                 "opacitybase": 0.5,
-                "opacitystep": 0.05,
                 "pad": {
                     "t": 16,
                     "l": 8,
@@ -106,7 +105,6 @@
             },
             "marker": {
                 "opacitybase": 0.5,
-                "opacitystep": 0.05,
                 "pad": {
                     "t": 16,
                     "l": 8,
@@ -197,7 +195,6 @@
             },
             "marker": {
                 "opacitybase": 0.5,
-                "opacitystep": 0.05,
                 "pad": {
                     "t": 16,
                     "l": 8,
@@ -288,7 +285,6 @@
             },
             "marker": {
                 "opacitybase": 0.5,
-                "opacitystep": 0.05,
                 "pad": {
                     "t": 16,
                     "l": 8,
