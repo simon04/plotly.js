@@ -54,8 +54,8 @@ function styleOne(s, pt, trace, opts) {
                 Color.addOpacity(cdi.color,
                     opacitybase + (1 - opacitybase) *
                     (pt.data.depth - trace._entryDepth) / trace._maxVisibleLayers
-                )
-                // No second argumnet so that the background is assumed behind it | TODO: how to pass backgroung color here?
+                ),
+                trace._backgroundColor
             );
         }
 

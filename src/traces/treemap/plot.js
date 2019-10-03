@@ -90,6 +90,9 @@ function plotOne(gd, cd, element, transitionOpts) {
         return pt.data.depth - entry.data.depth < maxDepth;
     };
 
+    // copy
+    trace._backgroundColor = fullLayout.paper_bgcolor;
+
     var gs = fullLayout._size;
     var domain = trace.domain;
 
