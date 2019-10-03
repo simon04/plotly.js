@@ -153,19 +153,6 @@ module.exports = {
             ].join(' ')
         },
 
-        opacitystep: {
-            valType: 'number',
-            editType: 'style',
-            role: 'style',
-            min: 0,
-            max: 1,
-            dflt: 0.5,
-            description: [
-                'Sets the increment for opacity of the headers based on the depth from the entry.',
-                'This options is not available when having a `colorscale`.'
-            ].join(' ')
-        },
-
         line: sunburstAttrs.marker.line,
 
         editType: 'calc'

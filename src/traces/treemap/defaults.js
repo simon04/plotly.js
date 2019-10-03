@@ -89,7 +89,6 @@ module.exports = function supplyDefaults(traceIn, traceOut, defaultColor, layout
         colorscaleDefaults(traceIn, traceOut, layout, coerce, {prefix: 'marker.', cLetter: 'c'});
     } else {
         coerce('marker.opacitybase');
-        coerce('marker.opacitystep');
         coerce('pathbar.opacity');
     }
 

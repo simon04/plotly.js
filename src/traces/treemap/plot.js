@@ -84,6 +84,7 @@ function plotOne(gd, cd, element, transitionOpts) {
     var hierarchy = cd0.hierarchy;
     var hasTransition = helpers.hasTransition(transitionOpts);
     var entry = helpers.findEntryWithLevel(hierarchy, trace.level);
+    var entryId = helpers.getPtId(entry);
     var maxDepth = helpers.getMaxDepth(trace);
     var hasVisibleDepth = function(pt) {
         return pt.data.depth - entry.data.depth < maxDepth;
@@ -150,7 +151,7 @@ function plotOne(gd, cd, element, transitionOpts) {
 
     trace._entryDepth = entry.data.depth;
     if(isRoot) {
-        trace._entryDepth++;
+        trace._entryDepth;
     }
 
     // N.B. handle multiple-root special case
@@ -158,6 +159,26 @@ function plotOne(gd, cd, element, transitionOpts) {
         maxDepth++;
     }
     trace._maxDepth = maxDepth;
+
+    var maxVisible = -Infinity;
+    var minVisible = Infinity;
+    hierarchy.each(function(pt) {
+        var q = pt.height;
+        var deltaDepth = pt.depth - trace._entryDepth;
+        if(
+            deltaDepth >= 0 &&
+            deltaDepth < trace._maxDepth + (cd0.hasMultipleRoots && isRoot ? -1 : 0)
+        ) {
+            var pathIds = helpers.listPath(pt.data, 'id');
+
+            if(helpers.getPtId(pt) === entryId || pathIds.indexOf(entryId) !== -1) {
+                maxVisible = Math.max(maxVisible, q);
+                minVisible = Math.min(minVisible, q);
+            }
+        }
+    });
+
+    trace._maxVisibleLayers = 1 + maxVisible - minVisible;
 
     var cenX = -vpw / 2 + gs.l + gs.w * (domain.x[1] + domain.x[0]) / 2;
     var cenY = -vph / 2 + gs.t + gs.h * (1 - (domain.y[1] + domain.y[0]) / 2);

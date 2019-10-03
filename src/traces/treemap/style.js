@@ -36,20 +36,29 @@ function styleOne(s, pt, trace, opts) {
     var lineColor;
     var lineWidth;
     var opacity;
-
-    var depthFade = function(n) {
-        var base = trace.marker.opacitybase;
-        var step = trace.marker.opacitystep;
-
-        return n === 0 ? base :
-            Math.max(0, Math.min(1, n * step));
-    };
+    var fillColor = cdi.color;
 
     if(hovered) {
         lineColor = trace._hovered.marker.line.color;
         lineWidth = trace._hovered.marker.line.width;
         opacity = trace._hovered.marker.opacity;
     } else {
+        if(!pt.onPathbar &&
+            !trace._hasColorscale &&
+            !helpers.isLeaf(pt) &&
+            !helpers.isHierarchyRoot(pt)
+        ) {
+            var opacitybase = trace.marker.opacitybase;
+
+            fillColor = Color.combine(
+                Color.addOpacity(cdi.color,
+                    opacitybase + (1 - opacitybase) *
+                    (pt.data.depth - trace._entryDepth) / trace._maxVisibleLayers
+                )
+                // No second argumnet so that the background is assumed behind it | TODO: how to pass backgroung color here?
+            );
+        }
+
         if(helpers.isHierarchyRoot(pt)) {
             lineColor = 'rgba(0,0,0,0)';
             lineWidth = 0;
@@ -58,15 +67,11 @@ function styleOne(s, pt, trace, opts) {
             lineWidth = Lib.castOption(trace, ptNumber, 'marker.line.width') || 0;
         }
 
-        opacity =
-            trace._hasColorscale || helpers.isLeaf(pt) ? 1 :
-            pt.onPathbar ? trace.pathbar.opacity :
-                helpers.isHierarchyRoot(pt) ? 1 :
-                    depthFade(pt.data.depth - trace._entryDepth);
+        opacity = pt.onPathbar ? trace.pathbar.opacity : null;
     }
 
     s.style('stroke-width', lineWidth)
-        .call(Color.fill, cdi.color)
+        .call(Color.fill, fillColor)
         .call(Color.stroke, lineColor)
         .style('opacity', opacity);
 }
